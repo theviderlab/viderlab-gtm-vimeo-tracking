@@ -1,0 +1,239 @@
+<!--
+Google Analytics Tag Manager (V2) custom HTML tag for Vimeo video tracking (simple version)
+
+Copyright 2016, Cardinal Path, Inc.
+
+Original author: Bill Tripple <btripple@cardinalpath.com>
+Revised by: Bogdan Bistriceanu <bbistriceanu@cardinalpath.com>
+Updated by: Rodrigo Díaz Velasco <rodrigo@viderlab.com>, Julius Fedorovicius <julius@analyticsmania.com> and Richard Outram <Richard.Outram@simmbiotic.com>
+
+Version 2.5
+-->
+<script>
+var dataLayer = (typeof(dataLayer) !== "undefined" && dataLayer instanceof Array) ? dataLayer : [];
+var lastP;
+var player;
+var video_url, video_id, video_h;
+
+//we declare variables that will hold information about the video being played
+var _playerTitle; 
+
+try {
+  init();
+}
+catch(err) {
+  dataLayer.push({
+    'event': 'gtm.error',
+    'errorMessage': e.message,
+    'tag': 'Vimeo Video Listener'
+  })
+}
+  
+function init() {
+  try {
+    var iframes=document.getElementsByTagName("iframe");
+    for (i = 0; i < iframes.length; ++i) {
+      var url=iframes[i].getAttribute("src");
+
+      if(/player\.vimeo\.com\/video/.test(url)) { // vimeo iframe found
+        player = iframes[i];
+        video_url = player.getAttribute("src");
+      }
+    }
+        
+    // Check if iframe id exists or create it
+    if(!player.hasAttribute("id")){ // id attribute missing
+        player.setAttribute("id","vimeo_id_1"); // add id attribute
+    }
+        
+    // Check if url has api parameter or create it
+    var urlUpdated=false;
+    if(!/api=/.test(video_url)) { // check to see if api parameter is in src attribute
+        url=updateUrl(video_url,"api",1);
+        urlUpdated=true;
+    }
+
+    // Check if url has player_id parameter or create it
+    if(!/player_id=/.test(video_url)) { // check if player_id is in src attribute
+        url=updateUrl(video_url,"player_id",player.getAttribute("id"));
+        urlUpdated=true;
+    }
+
+    prot = player.getAttribute('src').split('?')[0].split('//')[0];
+    // If protocol doesn't exist, then need to append to "url"
+    if (!prot){
+      url="https:" + video_url;
+      urlUpdated=true;
+    }
+
+        
+    // If url was updated change if on the iframe
+    if(urlUpdated) { // repopulate src attribute with added parameters
+        player.setAttribute("src",video_url)
+    }
+        
+    video_id = getVideoID(video_url);
+    video_h = getVideoh(video_url);
+
+    // Listen for messages from the player
+    if (window.addEventListener) {
+      window.addEventListener('message', onMessageReceived, false);
+    } else {
+      window.attachEvent('onmessage', onMessageReceived, false);
+    }
+  }
+  catch(err) {
+  }
+}
+
+function updateUrl(url,param,value) {
+  try {
+    return url+((/\?/.test(url)) ? "&" : "?")+param+"="+value; 
+  }
+  catch(err) {
+  }
+}
+
+// Handle messages received from the player
+function onMessageReceived(e) {
+  try {
+    var data = e.data;
+ 
+    if(typeof data === "string") {
+      data = JSON.parse(data);
+    }
+ 
+    console.log(data); // DEBUG
+
+    switch (data.event) {
+      case 'ready':
+        onReady(data);
+        break;
+      case 'play':
+        onPlay(data);
+        break;
+      case 'pause':
+        onPause(data);
+        break;
+      case 'timeupdate':
+        onPlayProgress(data);
+        break;
+    }
+  }
+  catch(err) {
+  }
+}
+
+// Helper function for sending a message to the player
+function post(action, value) {
+  try {
+    var data = {
+      method: action
+    };
+
+    if (value) {
+      data.value = value;
+    }
+
+    var message = JSON.stringify(data);
+    player.contentWindow.postMessage(data, video_url);
+  }
+  catch(err) {
+  }
+}
+
+function getVideoID(url) {
+    try {
+      return url.split('?')[0].split('/').pop();
+    }
+    catch(err) {
+    }
+  }
+    
+function getVideoh(url) {
+    try {
+      var h_param = new URL(url).searchParams.get("h");
+      return h_param;
+    }
+    catch(err) {
+    }
+}
+
+//our function that will use the Vimeo oEmbed API to retrieve additional information about the video
+function getVimeoInfo(url, callback) {
+ 
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src = url;
+ 
+  document.getElementsByTagName('body')[0].appendChild(script);
+}
+
+//the callback function which takes the data received from the Vimeo oEmbed API and places it into the corresponding objectes
+function vimeoCallback(e) {
+  _playerTitle = e['title'];
+}
+
+function onReady(data) {
+  try {
+    //execute our function which queries the Vimeo oEmbed API once the embedded videos are "ready"
+    getVimeoInfo("https://www.vimeo.com/api/oembed.json?url=https://vimeo.com/"+video_id+"/"+video_h+"&callback=vimeoCallback", vimeoCallback);
+
+    post('addEventListener', 'play');
+    post('addEventListener', 'pause');
+    post('addEventListener', 'finish');
+    post('addEventListener', 'playProgress');
+  }
+  catch(err){
+  }
+}
+
+function onPlay(data) {
+  try {
+    dataLayer.push({
+      event: "video",
+      video_action: "play",
+      video_url: 'https://vimeo.com/'+video_id+"/"+video_h,
+      video_percent: data.data.percent.toFixed(2) * 100,
+      video_title: _playerTitle.toLowerCase()
+    });
+  }
+  catch(err){
+  }
+}
+
+function onPause(data) {
+  try {
+    dataLayer.push({
+      event: "video",
+      video_action: "pause",
+      video_url: 'https://vimeo.com/'+video_id+"/"+video_h,
+      video_percent: data.data.percent.toFixed(2) * 100,
+      video_title: _playerTitle.toLowerCase()
+    });
+  }
+  catch(err) {
+  }
+}
+
+// Track progress: 25%, 50%, 75%, 100%
+function onPlayProgress(data) {
+  try {
+    var t = data.data.duration - data.data.seconds <= 1.5 ? 1 : (Math.floor(data.data.seconds / data.data.duration * 4) / 4).toFixed(2); 
+    if (!lastP || t > lastP) {
+      lastP=t;
+      if (parseFloat(t) != 0) {
+        dataLayer.push({
+          event: "video",
+          video_action: "progress",
+          video_url: 'https://vimeo.com/'+video_id+"/"+video_h,
+          video_percent: t * 100,
+          video_title: _playerTitle.toLowerCase()
+        })
+      }
+    }
+  }
+  catch(err) {
+  }
+}
+</script>
